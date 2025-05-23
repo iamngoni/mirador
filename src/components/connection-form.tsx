@@ -1,79 +1,89 @@
 import React, { useState, FormEvent } from 'react';
 import { useDartVMService } from '@/services/dart-vm-service';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 
 interface ConnectionFormProps {
-  onConnect?: () => void;
+    onConnect?: () => void;
 }
 
 const ConnectionForm: React.FC<ConnectionFormProps> = ({ onConnect }) => {
-  const { connect, connectionStatus } = useDartVMService();
-  const [url, setUrl] = useState<string>('ws://localhost:8181/ws');
-  const [isConnecting, setIsConnecting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+    const { connect, connectionStatus } = useDartVMService();
+    const [url, setUrl] = useState<string>('ws://127.0.0.1:62416/4AeedONv86o=/ws');
+    const [isConnecting, setIsConnecting] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
 
-  const isDisabled = connectionStatus === 'connected' || isConnecting;
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    
-    if (isDisabled) return;
-    
-    try {
-      setIsConnecting(true);
-      setError(null);
-      
-      // Validate URL
-      if (!url || !url.startsWith('ws://')) {
-        throw new Error('Please enter a valid WebSocket URL (ws://)');
-      }
-      
-      await connect(url);
-      
-      if (onConnect) {
-        onConnect();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
+        try {
+            setIsConnecting(true);
+            setError(null);
 
-  return (
-    <div className="connection-form-container">
-      <h2>Connect to Dart VM Service</h2>
-      <form onSubmit={handleSubmit} className="connection-form">
-        <div className="form-group">
-          <label htmlFor="url">WebSocket URL:</label>
-          <input
-            type="text"
-            id="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="ws://localhost:8181/ws"
-            disabled={isDisabled}
-          />
-          <p className="help-text">
-            The WebSocket URL of the Dart VM Service (e.g., ws://localhost:8181/ws)
-          </p>
-        </div>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <button 
-          type="submit" 
-          disabled={isDisabled}
-          className={isConnecting ? 'connecting' : ''}
-        >
-          {connectionStatus === 'connected' 
-            ? 'Connected' 
-            : isConnecting 
-              ? 'Connecting...' 
-              : 'Connect'}
-        </button>
-      </form>
-    </div>
-  );
+            // Validate URL
+            if (!url || !url.startsWith('ws://')) {
+                throw new Error('Please enter a valid WebSocket URL (ws://)');
+            }
+
+            await connect(url);
+
+            if (onConnect) {
+                onConnect();
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to connect');
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <h3 className="text-xl font-semibold">Connect to Dart VM</h3>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="url" className="text-sm font-medium">
+                WebSocket URL:
+              </label>
+              <Input
+                type="text"
+                id="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="ws://127.0.0.1:62416/4AeedONv86o=/ws"
+              />
+              <p className="text-sm text-muted-foreground">
+                The WebSocket URL shown in your IntelliJ console output
+              </p>
+            </div>
+          
+            {error && (
+              <div className="p-3 text-sm border rounded-md border-destructive/50 bg-destructive/10 text-destructive">
+                {error}
+              </div>
+            )}
+          </form>
+        </CardContent>
+        <CardFooter>
+          <Button 
+            type="submit" 
+            onClick={handleSubmit}
+            disabled={isConnecting}
+            className={isConnecting ? "relative" : ""}
+          >
+            {connectionStatus === 'connected' 
+              ? 'Reconnect' 
+              : isConnecting 
+                ? 'Connecting...' 
+                : 'Connect'}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
 };
 
 export default ConnectionForm;
