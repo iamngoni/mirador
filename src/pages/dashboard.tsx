@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import ConnectionForm from '@/components/connection-form';
 import { useDartVMService } from '@/services/dart-vm-service';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import ConnectionModal from '@/components/connection-modal';
 
 interface VMInfo {
     name: string;
@@ -20,17 +19,7 @@ interface VMInfo {
 
 const Dashboard: React.FC = () => {
     const { service, connectionStatus } = useDartVMService();
-    const [showConnectionModal, setShowConnectionModal] = useState(false);
-
-    useEffect(() => {
-        // Listen for the show-connection-modal event
-        const handleShowModal = () => setShowConnectionModal(true);
-        window.addEventListener('show-connection-modal', handleShowModal);
-
-        return () => {
-            window.removeEventListener('show-connection-modal', handleShowModal);
-        };
-    }, []);
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
     const { data: vmInfo, isLoading, error } = useQuery<VMInfo>({
         queryKey: ['vm'],
@@ -38,10 +27,6 @@ const Dashboard: React.FC = () => {
         enabled: connectionStatus === 'connected',
         refetchInterval: 5000, // Refresh every 5 seconds
     });
-
-    const handleConnect = () => {
-        setShowConnectionModal(false);
-    };
 
     const formatTimestamp = (timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -57,30 +42,17 @@ const Dashboard: React.FC = () => {
         return `${days}d ${hours}h ${minutes}m ${seconds}s`;
     };
 
-
-
     return (
         <div className="max-w-5xl mx-auto px-4 py-6">
-            {showConnectionModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-background rounded-lg shadow-lg w-full max-w-md">
-                        <ConnectionForm onConnect={handleConnect} />
-                        <div className="p-4 flex justify-end">
-                            <Button
-                                variant="outline"
-                                onClick={() => setShowConnectionModal(false)}
-                            >
-                                Cancel
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConnectionModal 
+                isOpen={isConnectionModalOpen} 
+                onOpenChange={setIsConnectionModalOpen} 
+            />
 
             <div className="flex justify-between items-center mb-8">
                 <h2 className="text-3xl font-bold">Dart VM Overview</h2>
                 <Button
-                    onClick={() => setShowConnectionModal(true)}
+                    onClick={() => setIsConnectionModalOpen(true)}
                     variant="outline"
                 >
                     {connectionStatus === 'connected' ? 'Change Connection' : 'Connect to VM'}
@@ -92,7 +64,7 @@ const Dashboard: React.FC = () => {
                     <CardContent className="pt-6 flex flex-col items-center justify-center space-y-4">
                         <p className="text-muted-foreground">Not connected to a Dart VM. Please connect to view VM information.</p>
                         <Button
-                            onClick={() => setShowConnectionModal(true)}
+                            onClick={() => setIsConnectionModalOpen(true)}
                             size="lg"
                         >
                             Connect to VM
@@ -114,7 +86,7 @@ const Dashboard: React.FC = () => {
                             <CardContent className="pt-6">
                                 <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
                                 <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch VM information'}</p>
-                                <Button onClick={() => setShowConnectionModal(true)} variant="outline">
+                                <Button onClick={() => setIsConnectionModalOpen(true)} variant="outline">
                                     Reconnect
                                 </Button>
                             </CardContent>

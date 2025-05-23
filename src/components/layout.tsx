@@ -1,11 +1,14 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Link, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 import { useDartVMService } from '@/services/dart-vm-service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import ConnectionModal from '@/components/connection-modal';
 
 const Layout: React.FC = () => {
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const { connectionStatus } = useDartVMService();
   
   return (
     <div className="min-h-screen flex flex-col">
@@ -16,9 +19,20 @@ const Layout: React.FC = () => {
         </div>
         <div className="flex items-center gap-4">
           <ConnectionStatus />
-          <ConnectButton />
+          <Button 
+            variant={connectionStatus === 'connected' ? "outline" : "default"}
+            size="sm"
+            onClick={() => setIsConnectionModalOpen(true)}
+          >
+            {connectionStatus === 'connected' ? 'Reconnect' : 'Connect'}
+          </Button>
         </div>
       </header>
+      
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen} 
+        onOpenChange={setIsConnectionModalOpen} 
+      />
       
       <div className="flex flex-1 overflow-hidden">
         <nav className="w-56 border-r bg-card/50">
@@ -106,33 +120,6 @@ const ConnectionStatus: React.FC = () => {
   );
 };
 
-// Button to quickly access the connection form
-const ConnectButton: React.FC = () => {
-  const { connectionStatus } = useDartVMService();
-  const isConnected = connectionStatus === 'connected';
-  const router = useRouter();
-
-  const handleConnectClick = () => {
-    // Navigate to dashboard
-    router.navigate({ 
-      to: '/',
-      replace: true
-    });
-    
-    // Set a global event for showing the connection modal
-    const event = new CustomEvent('show-connection-modal');
-    window.dispatchEvent(event);
-  };
-
-  return (
-    <Button 
-      variant={isConnected ? "outline" : "default"}
-      size="sm"
-      onClick={handleConnectClick}
-    >
-      {isConnected ? 'Reconnect' : 'Connect'}
-    </Button>
-  );
-};
+// Moved functionality directly into the Layout component
 
 export default Layout;
