@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDartVMService, dartVMService } from '@/services/dart-vm-service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import ConnectionModal from '@/components/connection-modal';
+import { dartVMService } from '@/services/dart-vm-service';
+import { ConnectionStatus } from '@/types/types';
 
 interface VMInfo {
     name: string;
@@ -18,9 +19,18 @@ interface VMInfo {
 }
 
 const Dashboard: React.FC = () => {
-    const { service, connectionStatus, connect } = useDartVMService();
-    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
-    
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
+
+    console.log({ connectionStatus })
+
+    // Listen for connection status changes
+    useEffect(() => {
+        const listener = (status: ConnectionStatus) => setConnectionStatus(status);
+        dartVMService.addConnectionStatusListener(listener);
+        return () => dartVMService.removeConnectionStatusListener(listener);
+    }, []);
+
     // Try to restore connection from localStorage if needed
     useEffect(() => {
         const reconnectIfNeeded = async () => {
@@ -28,7 +38,7 @@ const Dashboard: React.FC = () => {
                 const savedUrl = localStorage.getItem('dartVmServiceUrl');
                 if (savedUrl) {
                     try {
-                        await connect(savedUrl);
+                        await dartVMService.connect(savedUrl);
                         console.log('Reconnected to Dart VM Service');
                     } catch (error) {
                         console.error('Failed to reconnect:', error);
@@ -36,13 +46,16 @@ const Dashboard: React.FC = () => {
                 }
             }
         };
-        
+
         reconnectIfNeeded();
-    }, [connectionStatus, connect]);
+    }, [connectionStatus]);
 
     const { data: vmInfo, isLoading, error } = useQuery<VMInfo>({
         queryKey: ['vm'],
-        queryFn: () => service.getVM(),
+        queryFn: () => {
+            console.log('[Dashboard] Fetching VM info');
+            return dartVMService.getVM();
+        },
         enabled: connectionStatus === 'connected',
         refetchInterval: 5000, // Refresh every 5 seconds
     });
@@ -61,10 +74,22 @@ const Dashboard: React.FC = () => {
         return `${days}d ${hours}h ${minutes}m ${seconds}s`;
     };
 
+    // Log data and errors for debugging
+    React.useEffect(() => {
+        if (vmInfo) {
+            console.log('[Dashboard] VM Info:', vmInfo);
+        }
+    }, [vmInfo]);
+    React.useEffect(() => {
+        if (error) {
+            console.error('[Dashboard] Error:', error);
+        }
+    }, [error]);
+
     return (
         <div className="max-w-5xl mx-auto px-4 py-6">
-            <ConnectionModal 
-                isOpen={isConnectionModalOpen} 
+            <ConnectionModal
+                isOpen={isConnectionModalOpen}
                 onOpenChange={setIsConnectionModalOpen}
                 onConnectSuccess={(url) => {
                     localStorage.setItem('dartVmServiceUrl', url);
@@ -104,69 +129,72 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {error && (
-                      <Card className="border-destructive/50 bg-destructive/5 mb-6">
-                        <CardContent className="pt-6">
-                          <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
-                          <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch VM information'}</p>
-                          <Button onClick={() => setIsConnectionModalOpen(true)} variant="outline">
-                            Reconnect
-                          </Button>
-                        </CardContent>
-                      </Card>
+                        <Card className="border-destructive/50 bg-destructive/5 mb-6">
+                            <CardContent className="pt-6">
+                                <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
+                                <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch VM information'}</p>
+                                <Button onClick={() => setIsConnectionModalOpen(true)} variant="outline">
+                                    Reconnect
+                                </Button>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {!isLoading && !error && !vmInfo && (
-                      <Card>
-                        <CardContent className="pt-6 text-center text-muted-foreground p-8">
-                          No VM information available yet. Connect to a Dart VM and wait for data to appear.
-                        </CardContent>
-                      </Card>
+                        <Card>
+                            <CardContent className="pt-6 text-center text-muted-foreground p-8">
+                                No VM information available yet. Connect to a Dart VM and wait for data to appear.
+                            </CardContent>
+                        </Card>
                     )}
 
                     {vmInfo && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Version</h3>
-                                    <div className="text-xl font-semibold">{vmInfo.version}</div>
-                                </CardContent>
-                            </Card>
+                        <>
+                            <pre className="text-xs bg-muted p-2 rounded mb-4">{JSON.stringify(vmInfo, null, 2)}</pre>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Version</h3>
+                                        <div className="text-xl font-semibold">{vmInfo.version}</div>
+                                    </CardContent>
+                                </Card>
 
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Architecture</h3>
-                                    <div className="text-xl font-semibold">{vmInfo.architectureBits}-bit ({vmInfo.targetCPU})</div>
-                                </CardContent>
-                            </Card>
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Architecture</h3>
+                                        <div className="text-xl font-semibold">{vmInfo.architectureBits}-bit ({vmInfo.targetCPU})</div>
+                                    </CardContent>
+                                </Card>
 
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Isolates</h3>
-                                    <div className="text-xl font-semibold">{vmInfo.isolates?.length || 0}</div>
-                                </CardContent>
-                            </Card>
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Isolates</h3>
+                                        <div className="text-xl font-semibold">{vmInfo.isolates?.length || 0}</div>
+                                    </CardContent>
+                                </Card>
 
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Process ID</h3>
-                                    <div className="text-xl font-semibold">{vmInfo.pid}</div>
-                                </CardContent>
-                            </Card>
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Process ID</h3>
+                                        <div className="text-xl font-semibold">{vmInfo.pid}</div>
+                                    </CardContent>
+                                </Card>
 
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Time</h3>
-                                    <div className="text-xl font-semibold">{formatTimestamp(vmInfo.startTime)}</div>
-                                </CardContent>
-                            </Card>
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Time</h3>
+                                        <div className="text-xl font-semibold">{formatTimestamp(vmInfo.startTime)}</div>
+                                    </CardContent>
+                                </Card>
 
-                            <Card className="hover:shadow-md transition-shadow">
-                                <CardContent className="pt-6">
-                                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Uptime</h3>
-                                    <div className="text-xl font-semibold">{calculateUptime(vmInfo.startTime)}</div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                                <Card className="hover:shadow-md transition-shadow">
+                                    <CardContent className="pt-6">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-1">Uptime</h3>
+                                        <div className="text-xl font-semibold">{calculateUptime(vmInfo.startTime)}</div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </>
                     )}
                 </>
             )}
