@@ -14,7 +14,7 @@ import {
 interface ConnectionModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnectSuccess?: () => void;
+  onConnectSuccess?: (url: string) => void;
 }
 
 const ConnectionModal: React.FC<ConnectionModalProps> = ({
@@ -23,7 +23,9 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
   onConnectSuccess
 }) => {
   const { connect, connectionStatus } = useDartVMService();
-  const [url, setUrl] = useState<string>('ws://127.0.0.1:62416/4AeedONv86o=/ws');
+  const [url, setUrl] = useState<string>(
+    localStorage.getItem('dartVmServiceUrl') || 'ws://127.0.0.1:62416/4AeedONv86o=/ws'
+  );
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,8 +45,11 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
       onOpenChange(false);
       
       if (onConnectSuccess) {
-        onConnectSuccess();
+        onConnectSuccess(url);
       }
+      
+      // Store URL in localStorage for persistence
+      localStorage.setItem('dartVmServiceUrl', url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect');
       setIsConnecting(false);

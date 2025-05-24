@@ -7,8 +7,12 @@ import {
   useReactTable,
   type TableMeta,
 } from '@tanstack/react-table';
-import { useDartVMService, useVMStream } from '@/services/dart-vm-service';
-import ConnectionForm from '@/components/connection-form';
+import { useDartVMService, useVMStream, dartVMService } from '@/services/dart-vm-service';
+import ConnectionModal from '@/components/connection-modal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ReloadIcon } from '@radix-ui/react-icons';
 
 interface Isolate {
   id: string;
@@ -50,18 +54,18 @@ const columns = [
       const pauseEvent = isolate.pauseEvent;
       
       if (!info.getValue()) {
-        return <span className="status not-runnable">Not Runnable</span>;
+        return <Badge variant="secondary">Not Runnable</Badge>;
       }
       
       if (pauseEvent) {
         return (
-          <span className="status paused" title={pauseEvent.reason || pauseEvent.message}>
+          <Badge variant="warning" title={pauseEvent.reason || pauseEvent.message}>
             Paused: {pauseEvent.kind}
-          </span>
+          </Badge>
         );
       }
       
-      return <span className="status running">Running</span>;
+      return <Badge variant="success">Running</Badge>;
     },
   }),
   columnHelper.accessor('startTime', {
@@ -106,30 +110,33 @@ const columns = [
       };
       
       return (
-        <div className="isolate-actions">
+        <div className="flex gap-2">
           {isPaused ? (
-            <button
+            <Button
               onClick={handleResume}
-              className="resume-button"
+              variant="success"
+              size="sm"
               title="Resume isolate execution"
             >
               Resume
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               onClick={handlePause}
-              className="pause-button"
+              variant="warning"
+              size="sm"
               title="Pause isolate execution"
             >
               Pause
-            </button>
+            </Button>
           )}
-          <button
-            className="inspect-button"
+          <Button
+            variant="info"
+            size="sm"
             title="View detailed isolate information"
           >
             Inspect
-          </button>
+          </Button>
         </div>
       );
     },
@@ -137,11 +144,30 @@ const columns = [
 ];
 
 const Isolates: React.FC = () => {
-  const { service, connectionStatus } = useDartVMService();
-  const [showConnection, setShowConnection] = useState(connectionStatus !== 'connected');
+  const { service, connectionStatus, connect } = useDartVMService();
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
+  
+  // Try to restore connection from localStorage if needed
+  useEffect(() => {
+    const reconnectIfNeeded = async () => {
+      if (connectionStatus !== 'connected') {
+        const savedUrl = localStorage.getItem('dartVmServiceUrl');
+        if (savedUrl) {
+          try {
+            await connect(savedUrl);
+            console.log('Reconnected to Dart VM Service');
+          } catch (error) {
+            console.error('Failed to reconnect:', error);
+          }
+        }
+      }
+    };
+    
+    reconnectIfNeeded();
+  }, [connectionStatus, connect]);
   
   useEffect(() => {
-    setShowConnection(connectionStatus !== 'connected');
+    setIsConnectionModalOpen(connectionStatus !== 'connected');
   }, [connectionStatus]);
   
   // Listen to isolate events
@@ -184,93 +210,147 @@ const Isolates: React.FC = () => {
     } as TableMeta<Isolate>,
   });
   
-  const handleConnect = () => {
-    setShowConnection(false);
+  const handleConnect = (url: string) => {
+    localStorage.setItem('dartVmServiceUrl', url);
+    setIsConnectionModalOpen(false);
   };
   
-  if (showConnection) {
-    return <ConnectionForm onConnect={handleConnect} />;
+  if (connectionStatus !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold mb-2">Connect to Dart VM</h2>
+              <p className="text-muted-foreground">You need to connect to a Dart VM to view isolates</p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <ConnectionModal 
+          isOpen={isConnectionModalOpen}
+          onOpenChange={setIsConnectionModalOpen}
+          onConnectSuccess={(url) => handleConnect(url)}
+        />
+      </div>
+    );
   }
   
   return (
-    <div className="isolates-container">
-      <div className="panel-header">
-        <h2>Isolates</h2>
-        <div className="panel-actions">
-          <button onClick={() => refetch()} className="refresh-button">
-            Refresh
-          </button>
-        </div>
+    <div className="container p-4">
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen}
+        onOpenChange={setIsConnectionModalOpen}
+        onConnectSuccess={(url) => handleConnect(url)}
+      />
+      
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">Isolates</h2>
+        <Button 
+          variant="outline" 
+          onClick={() => refetch()}
+          className="flex items-center gap-2"
+        >
+          <ReloadIcon className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
       
-      {isLoading && <div className="loading">Loading isolates...</div>}
+      {isLoading && (
+        <div className="flex justify-center items-center h-32">
+          <div className="text-lg text-muted-foreground">Loading isolates...</div>
+        </div>
+      )}
       
       {error && (
-        <div className="error-card">
-          <h3>Error</h3>
-          <p>{error instanceof Error ? error.message : 'Failed to fetch isolates'}</p>
-          <button onClick={() => setShowConnection(true)}>Reconnect</button>
-        </div>
+        <Card className="border-destructive/50 bg-destructive/5 mb-6">
+          <CardContent className="pt-6">
+            <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
+            <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch isolates'}</p>
+            <Button onClick={() => setIsConnectionModalOpen(true)}>Reconnect</Button>
+          </CardContent>
+        </Card>
       )}
       
       {!isLoading && !error && isolateDetailsArray.length === 0 && (
-        <div className="no-data">
-          No isolates found. This may mean the Dart VM has no active isolates,
-          or you may need to reconnect to the VM service.
-        </div>
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground p-8">
+            No isolates found. This may mean the Dart VM has no active isolates,
+            or you may need to reconnect to the VM service.
+          </CardContent>
+        </Card>
       )}
       
-      {isolateDetailsArray.length > 0 && (
-        <div className="table-container">
-          <table className="isolates-table">
-            <thead>
-              {table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map(header => (
-                    <th key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map(row => (
-                <tr key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {isolateDetailsArray.length > 0 ? (
+        <div className="rounded-md border">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                {table.getHeaderGroups().map(headerGroup => (
+                  <tr key={headerGroup.id} className="border-b bg-muted/50">
+                    {headerGroup.headers.map(header => (
+                      <th key={header.id} className="h-10 px-4 text-left align-middle font-medium text-muted-foreground">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.map(row => (
+                  <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors">
+                    {row.getVisibleCells().map(cell => (
+                      <td key={cell.id} className="p-4 align-middle">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+      ) : (
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground p-8">
+            No isolates found. This may mean the Dart VM has no active isolates,
+            or you may need to reconnect to the VM service.
+          </CardContent>
+        </Card>
       )}
       
       {isolateEvents.length > 0 && (
-        <div className="events-container">
-          <h3>Recent Isolate Events</h3>
-          <div className="events-list">
-            {isolateEvents.slice(-5).map((event, index) => (
-              <div key={index} className="event-item">
-                <div className="event-time">
-                  {new Date(event.timestamp || Date.now()).toLocaleTimeString()}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Recent Isolate Events</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {isolateEvents.slice(-5).map((event, index) => (
+                <div key={index} className="flex items-center gap-4 p-2 rounded-md border bg-card">
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(event.timestamp || Date.now()).toLocaleTimeString()}
+                  </div>
+                  <Badge variant="outline">{event.kind}</Badge>
+                  <div className="text-sm">
+                    Isolate: {event.isolate?.name || event.isolate?.id || 'Unknown'}
+                  </div>
                 </div>
-                <div className="event-type">{event.kind}</div>
-                <div className="event-details">
-                  Isolate: {event.isolate?.name || event.isolate?.id || 'Unknown'}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

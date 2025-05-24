@@ -1,14 +1,57 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { Link, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/router-devtools';
-import { useDartVMService } from '@/services/dart-vm-service';
+import { useDartVMService, dartVMService } from '@/services/dart-vm-service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ConnectionModal from '@/components/connection-modal';
 
+// Global connection status handler
+let lastConnectionUrl: string | null = null;
+const reconnectIfNeeded = async () => {
+  if (lastConnectionUrl && dartVMService.getConnectionStatus() !== 'connected') {
+    try {
+      console.log('Reconnecting to Dart VM Service...');
+      await dartVMService.connect(lastConnectionUrl);
+    } catch (error) {
+      console.error('Failed to reconnect:', error);
+    }
+  }
+};
+
 const Layout: React.FC = () => {
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
-  const { connectionStatus } = useDartVMService();
+  const { connectionStatus, connect } = useDartVMService();
+  
+  // Set up event listener for connection change
+  useEffect(() => {
+    const handleConnect = (event: CustomEvent) => {
+      if (event.detail?.url) {
+        lastConnectionUrl = event.detail.url;
+      }
+    };
+    
+    window.addEventListener('dart-vm-connected' as any, handleConnect);
+    
+    // Try to reconnect when component mounts
+    reconnectIfNeeded();
+    
+    return () => {
+      window.removeEventListener('dart-vm-connected' as any, handleConnect);
+    };
+  }, []);
+  
+  const handleConnect = async (url: string) => {
+    try {
+      await connect(url);
+      lastConnectionUrl = url;
+      // Dispatch event with connection URL
+      const event = new CustomEvent('dart-vm-connected', { detail: { url } });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('Connection failed:', error);
+    }
+  };
   
   return (
     <div className="min-h-screen flex flex-col">
@@ -18,20 +61,24 @@ const Layout: React.FC = () => {
           <span className="text-sm text-muted-foreground">Dart VM Debugger</span>
         </div>
         <div className="flex items-center gap-4">
-          <ConnectionStatus />
-          <Button 
-            variant={connectionStatus === 'connected' ? "outline" : "default"}
-            size="sm"
-            onClick={() => setIsConnectionModalOpen(true)}
-          >
-            {connectionStatus === 'connected' ? 'Reconnect' : 'Connect'}
-          </Button>
-        </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${connectionStatus === 'connected' ? 'bg-success' : 'bg-destructive'}`}></div>
+              <span className="text-sm font-medium">{connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}</span>
+            </div>
+            <Button 
+              variant={connectionStatus === 'connected' ? "outline" : "default"}
+              size="sm"
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              {connectionStatus === 'connected' ? 'Reconnect' : 'Connect'}
+            </Button>
+          </div>
       </header>
       
       <ConnectionModal 
         isOpen={isConnectionModalOpen} 
-        onOpenChange={setIsConnectionModalOpen} 
+        onOpenChange={setIsConnectionModalOpen}
+        onConnectSuccess={handleConnect}
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -120,6 +167,6 @@ const ConnectionStatus: React.FC = () => {
   );
 };
 
-// Moved functionality directly into the Layout component
+
 
 export default Layout;

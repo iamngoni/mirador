@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDartVMService } from '@/services/dart-vm-service';
-import ConnectionForm from '@/components/connection-form';
+import { useDartVMService, dartVMService } from '@/services/dart-vm-service';
+import ConnectionModal from '@/components/connection-modal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 
 interface MemoryUsage {
   heapUsage: {
@@ -20,12 +24,31 @@ interface AllocationStats {
 }
 
 const Memory: React.FC = () => {
-  const { service, connectionStatus } = useDartVMService();
-  const [showConnection, setShowConnection] = useState(connectionStatus !== 'connected');
+  const { service, connectionStatus, connect } = useDartVMService();
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
   const [selectedIsolateId, setSelectedIsolateId] = useState<string | null>(null);
   
+  // Try to restore connection from localStorage if needed
   useEffect(() => {
-    setShowConnection(connectionStatus !== 'connected');
+    const reconnectIfNeeded = async () => {
+      if (connectionStatus !== 'connected') {
+        const savedUrl = localStorage.getItem('dartVmServiceUrl');
+        if (savedUrl) {
+          try {
+            await connect(savedUrl);
+            console.log('Reconnected to Dart VM Service');
+          } catch (error) {
+            console.error('Failed to reconnect:', error);
+          }
+        }
+      }
+    };
+    
+    reconnectIfNeeded();
+  }, [connectionStatus, connect]);
+  
+  useEffect(() => {
+    setIsConnectionModalOpen(connectionStatus !== 'connected');
   }, [connectionStatus]);
   
   // Fetch VM information to get isolates
@@ -100,126 +123,186 @@ const Memory: React.FC = () => {
       }));
   }, [allocationProfile]);
   
-  const handleConnect = () => {
-    setShowConnection(false);
+  const handleConnect = (url: string) => {
+    localStorage.setItem('dartVmServiceUrl', url);
+    setIsConnectionModalOpen(false);
   };
   
-  if (showConnection) {
-    return <ConnectionForm onConnect={handleConnect} />;
+  if (connectionStatus !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold mb-2">Connect to Dart VM</h2>
+              <p className="text-muted-foreground">You need to connect to a Dart VM to view memory information</p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <ConnectionModal 
+          isOpen={isConnectionModalOpen}
+          onOpenChange={setIsConnectionModalOpen}
+          onConnectSuccess={(url) => handleConnect(url)}
+        />
+      </div>
+    );
   }
   
   return (
-    <div className="memory-container">
-      <div className="panel-header">
-        <h2>Memory Profiler</h2>
-        <div className="isolate-selector">
-          <label htmlFor="isolate-select">Isolate:</label>
-          <select
-            id="isolate-select"
+    <div className="container p-4">
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen}
+        onOpenChange={setIsConnectionModalOpen}
+        onConnectSuccess={(url) => handleConnect(url)}
+      />
+      
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">Memory Profiler</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Isolate:</span>
+          <Select
             value={selectedIsolateId || ''}
-            onChange={(e) => setSelectedIsolateId(e.target.value)}
+            onValueChange={(value) => setSelectedIsolateId(value)}
           >
-            {vmData?.isolates?.map((isolate: any) => (
-              <option key={isolate.id} value={isolate.id}>
-                {isolate.name || isolate.id}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-[250px]">
+              <SelectValue placeholder="Select an isolate" />
+            </SelectTrigger>
+            <SelectContent>
+              {vmData?.isolates?.map((isolate: any) => (
+                <SelectItem key={isolate.id} value={isolate.id}>
+                  {isolate.name || isolate.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       
       {(isLoadingMemory || isLoadingProfile) && (
-        <div className="loading">Loading memory data...</div>
-      )}
-      
-      {(memoryError || profileError) && (
-        <div className="error-card">
-          <h3>Error</h3>
-          <p>
-            {memoryError instanceof Error 
-              ? memoryError.message 
-              : profileError instanceof Error 
-                ? profileError.message 
-                : 'Failed to fetch memory data'}
-          </p>
+        <div className="flex justify-center items-center h-32">
+          <div className="text-lg text-muted-foreground">Loading memory data...</div>
         </div>
       )}
       
+      {(memoryError || profileError) && (
+        <Card className="border-destructive/50 bg-destructive/5 mb-6">
+          <CardContent className="pt-6">
+            <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
+            <p className="mb-4">
+              {memoryError instanceof Error 
+                ? memoryError.message 
+                : profileError instanceof Error 
+                  ? profileError.message 
+                  : 'Failed to fetch memory data'}
+            </p>
+            <Button onClick={() => setIsConnectionModalOpen(true)}>Reconnect</Button>
+          </CardContent>
+        </Card>
+      )}
+      
+      {!isLoadingMemory && !memoryUsage && (
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground p-8">
+            No memory data available yet. Wait for the Dart VM to report memory usage.
+          </CardContent>
+        </Card>
+      )}
       {memoryUsage && (
-        <div className="memory-overview">
-          <div className="memory-card">
-            <h3>Heap Memory</h3>
-            <div className="memory-stats">
-              <div className="stat-item">
-                <span className="stat-label">Used:</span>
-                <span className="stat-value">{formatBytes(memoryUsage?.heapUsage?.used || 0)}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Heap Memory</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Used:</span>
+                    <span className="font-medium">{formatBytes(memoryUsage?.heapUsage?.used || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Capacity:</span>
+                    <span className="font-medium">{formatBytes(memoryUsage?.heapUsage?.capacity || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Utilization:</span>
+                    <span className="font-medium">
+                      {calculatePercentage(memoryUsage?.heapUsage?.used || 0, memoryUsage?.heapUsage?.capacity || 1)}
+                    </span>
+                  </div>
+                </div>
+                <Progress
+                  value={((memoryUsage?.heapUsage?.used || 0) / (memoryUsage?.heapUsage?.capacity || 1)) * 100}
+                  className="h-2"
+                />
               </div>
-              <div className="stat-item">
-                <span className="stat-label">Capacity:</span>
-                <span className="stat-value">{formatBytes(memoryUsage?.heapUsage?.capacity || 0)}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Utilization:</span>
-                <span className="stat-value">
-                  {calculatePercentage(memoryUsage?.heapUsage?.used || 0, memoryUsage?.heapUsage?.capacity || 1)}
-                </span>
-              </div>
-            </div>
-            <div className="memory-bar">
-              <div 
-                className="memory-used-bar"
-                style={{ 
-                  width: `${((memoryUsage?.heapUsage?.used || 0) / (memoryUsage?.heapUsage?.capacity || 1)) * 100}%` 
-                }}
-              ></div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
           
-          <div className="memory-card">
-            <h3>External Memory</h3>
-            <div className="memory-stats">
-              <div className="stat-item">
-                <span className="stat-label">Used:</span>
-                <span className="stat-value">{formatBytes(memoryUsage?.externalUsage || 0)}</span>
+          <Card>
+            <CardHeader>
+              <CardTitle>External Memory</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Used:</span>
+                  <span className="font-medium">{formatBytes(memoryUsage?.externalUsage || 0)}</span>
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       )}
       
       {topAllocationsBySize.length > 0 && (
-        <div className="allocations-section">
-          <h3>Top Allocations by Size</h3>
-          <div className="allocations-list">
-            {topAllocationsBySize.map((item: AllocationStats, index: number) => (
-              <div key={index} className="allocation-item">
-                <div className="allocation-name" title={item.name}>{item.name}</div>
-                <div className="allocation-bar-container">
-                  <div 
-                    className="allocation-bar" 
-                    style={{ width: `${item.percentSize}%` }}
-                  ></div>
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Top Allocations by Size</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topAllocationsBySize.map((item: AllocationStats, index: number) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex justify-between">
+                    <div className="font-medium truncate max-w-[50%]" title={item.name}>{item.name}</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{formatBytes(item.size)}</span>
+                      <span>({item.percentSize.toFixed(1)}%)</span>
+                      <span>{item.count.toLocaleString()} instances</span>
+                    </div>
+                  </div>
+                  <Progress
+                    value={item.percentSize}
+                    className="h-2"
+                  />
                 </div>
-                <div className="allocation-stats">
-                  <span>{formatBytes(item.size)}</span>
-                  <span>({item.percentSize.toFixed(1)}%)</span>
-                  <span>{item.count.toLocaleString()} instances</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
       
-      <div className="memory-notes">
-        <p>
-          Note: Memory data is updated every 2 seconds. Allocation profile is collected with GC before measurement.
-        </p>
-        <p>
-          This view shows a simplified snapshot of the Dart VM memory usage. For more detailed memory analysis,
-          consider using the Dart DevTools Memory tab.
-        </p>
-      </div>
+      <Card className="bg-muted/40">
+        <CardContent className="pt-6">
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>
+              Note: Memory data is updated every 2 seconds. Allocation profile is collected with GC before measurement.
+            </p>
+            <p>
+              This view shows a simplified snapshot of the Dart VM memory usage. For more detailed memory analysis,
+              consider using the Dart DevTools Memory tab.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

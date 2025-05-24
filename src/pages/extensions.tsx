@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useVMStream, useDartVMService } from '@/services/dart-vm-service';
-import ConnectionForm from '@/components/connection-form';
+import { useVMStream, useDartVMService, dartVMService } from '@/services/dart-vm-service';
+import ConnectionModal from '@/components/connection-modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 
 interface ExtensionEvent {
   kind: string;
@@ -11,16 +18,35 @@ interface ExtensionEvent {
 }
 
 const Extensions: React.FC = () => {
-  const { connectionStatus } = useDartVMService();
-  const [showConnection, setShowConnection] = useState(connectionStatus !== 'connected');
+  const { connectionStatus, connect } = useDartVMService();
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
   const [filterText, setFilterText] = useState('');
   const [filterKind, setFilterKind] = useState<string>('');
   const [autoScroll, setAutoScroll] = useState(true);
   const { events: extensionEvents, clearEvents } = useVMStream<ExtensionEvent>('Extension');
   const containerRef = React.useRef<HTMLDivElement>(null);
 
+  // Try to restore connection from localStorage if needed
   useEffect(() => {
-    setShowConnection(connectionStatus !== 'connected');
+    const reconnectIfNeeded = async () => {
+      if (connectionStatus !== 'connected') {
+        const savedUrl = localStorage.getItem('dartVmServiceUrl');
+        if (savedUrl) {
+          try {
+            await connect(savedUrl);
+            console.log('Reconnected to Dart VM Service');
+          } catch (error) {
+            console.error('Failed to reconnect:', error);
+          }
+        }
+      }
+    };
+    
+    reconnectIfNeeded();
+  }, [connectionStatus, connect]);
+
+  useEffect(() => {
+    setIsConnectionModalOpen(connectionStatus !== 'connected');
   }, [connectionStatus]);
 
   // Extract all unique extension kinds for filtering
@@ -59,120 +85,177 @@ const Extensions: React.FC = () => {
     }
   }, [filteredEvents.length, autoScroll, virtualizer]);
 
-  const handleConnect = () => {
-    setShowConnection(false);
+  const handleConnect = (url: string) => {
+    localStorage.setItem('dartVmServiceUrl', url);
+    setIsConnectionModalOpen(false);
   };
 
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  if (showConnection) {
-    return <ConnectionForm onConnect={handleConnect} />;
+  if (connectionStatus !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold mb-2">Connect to Dart VM</h2>
+              <p className="text-muted-foreground">You need to connect to a Dart VM to view extension events</p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <ConnectionModal 
+          isOpen={isConnectionModalOpen}
+          onOpenChange={setIsConnectionModalOpen}
+          onConnectSuccess={(url) => handleConnect(url)}
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="extensions-container">
-      <div className="panel-header">
-        <h2>Extension Events</h2>
-        <p className="extension-description">
-          Extension events are custom events sent from your Dart application using
-          <code>postEvent</code> and <code>serviceExtension</code> methods.
+    <div className="container p-4">
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen}
+        onOpenChange={setIsConnectionModalOpen}
+        onConnectSuccess={(url) => handleConnect(url)}
+      />
+      
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold mb-2">Extension Events</h2>
+        <p className="text-muted-foreground">
+          Extension events are custom events sent from your Dart application using{' '}
+          <code className="bg-muted px-1 py-0.5 rounded text-sm font-mono">postEvent</code> and{' '}
+          <code className="bg-muted px-1 py-0.5 rounded text-sm font-mono">serviceExtension</code> methods.
         </p>
       </div>
       
-      <div className="toolbar">
-        <div className="search-container">
-          <input
-            type="text"
-            placeholder="Filter events..."
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            className="search-input"
-          />
-          <select
-            value={filterKind}
-            onChange={(e) => setFilterKind(e.target.value)}
-            className="kind-filter"
-          >
-            <option value="">All Event Types</option>
-            {uniqueExtensionKinds.map(kind => (
-              <option key={kind} value={kind}>{kind}</option>
-            ))}
-          </select>
-        </div>
-        <div className="toolbar-actions">
-          <label className="auto-scroll-label">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
+      <div className="flex items-center justify-between p-4 border-b mb-2">
+        <div className="flex flex-1 gap-2 items-center">
+          <div className="w-full max-w-sm">
+            <Input
+              placeholder="Filter events..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
             />
-            Auto-scroll
-          </label>
-          <button onClick={clearEvents} className="clear-button">
+          </div>
+          <Select
+            value={filterKind}
+            onValueChange={(value) => setFilterKind(value)}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="All Event Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Event Types</SelectItem>
+              {uniqueExtensionKinds.map(kind => (
+                <SelectItem key={kind} value={kind}>{kind}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Checkbox 
+              id="auto-scroll" 
+              checked={autoScroll} 
+              onCheckedChange={(checked) => setAutoScroll(checked as boolean)}
+            />
+            <label 
+              htmlFor="auto-scroll" 
+              className="text-sm font-medium cursor-pointer"
+            >
+              Auto-scroll
+            </label>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={clearEvents}
+          >
             Clear Events
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="events-status">
+      <div className="px-4 py-1 text-xs text-muted-foreground border-b mb-4">
         Showing {filteredEvents.length} of {extensionEvents.length} events
       </div>
 
-      <div ref={containerRef} className="extensions-view">
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const event = filteredEvents[virtualRow.index];
-            return (
-              <div
-                key={virtualRow.key}
-                className="extension-event"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                <div className="event-header">
-                  <div className="event-time">
-                    {event.timestamp ? formatTime(event.timestamp) : 'No timestamp'}
+      <div className="border rounded-md mb-4">
+        {filteredEvents.length > 0 ? (
+          <div ref={containerRef} className="h-[500px] overflow-auto">
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const event = filteredEvents[virtualRow.index];
+                return (
+                  <div
+                    key={virtualRow.key}
+                    className="border-b p-4"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <Badge variant="outline">
+                        {event.extensionKind || 'Unknown Type'}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {event.timestamp ? formatTime(event.timestamp) : 'No timestamp'}
+                      </span>
+                    </div>
+                    <ScrollArea className="h-[100px] rounded-md border p-2 bg-muted/20">
+                      <pre className="text-xs font-mono">{JSON.stringify(event.extensionData, null, 2)}</pre>
+                    </ScrollArea>
                   </div>
-                  <div className="event-kind">{event.extensionKind || 'Unknown Type'}</div>
-                </div>
-                <div className="event-content">
-                  <pre>{JSON.stringify(event.extensionData, null, 2)}</pre>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {filteredEvents.length === 0 && (
-        <div className="no-data">
-          <p>No extension events recorded.</p>
-          <p>To send extension events from your Dart application, use:</p>
-          <pre>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <Card className="border-0 shadow-none">
+            <CardContent className="p-6">
+              <div className="flex flex-col items-center justify-center min-h-[200px] text-center text-muted-foreground">
+                <svg width="48" height="48" fill="none" className="mx-auto mb-2" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#f3f4f6"/><path d="M24 14v12m0 4h.01" stroke="#a1a1aa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="2"/></svg>
+                <p className="mb-2">No extension events recorded yet.</p>
+                <p className="mb-2">To send extension events from your Dart application, use:</p>
+                <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto w-full max-w-xl mx-auto">
+                  <pre>
 {`// In your Dart code
 developer.postEvent('myExtension', {'data': 'value'});
+
 
 // Or register a service extension
 developer.registerExtension('ext.myExtension', (method, params) {
   return ServiceExtensionResponse.result(json.encode({'result': 'success'}));
 });`}
-          </pre>
-        </div>
-      )}
+                  </pre>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 };

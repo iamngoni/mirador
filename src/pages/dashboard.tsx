@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDartVMService } from '@/services/dart-vm-service';
+import { useDartVMService, dartVMService } from '@/services/dart-vm-service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import ConnectionModal from '@/components/connection-modal';
@@ -18,8 +18,27 @@ interface VMInfo {
 }
 
 const Dashboard: React.FC = () => {
-    const { service, connectionStatus } = useDartVMService();
+    const { service, connectionStatus, connect } = useDartVMService();
     const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+    
+    // Try to restore connection from localStorage if needed
+    useEffect(() => {
+        const reconnectIfNeeded = async () => {
+            if (connectionStatus !== 'connected') {
+                const savedUrl = localStorage.getItem('dartVmServiceUrl');
+                if (savedUrl) {
+                    try {
+                        await connect(savedUrl);
+                        console.log('Reconnected to Dart VM Service');
+                    } catch (error) {
+                        console.error('Failed to reconnect:', error);
+                    }
+                }
+            }
+        };
+        
+        reconnectIfNeeded();
+    }, [connectionStatus, connect]);
 
     const { data: vmInfo, isLoading, error } = useQuery<VMInfo>({
         queryKey: ['vm'],
@@ -46,7 +65,10 @@ const Dashboard: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4 py-6">
             <ConnectionModal 
                 isOpen={isConnectionModalOpen} 
-                onOpenChange={setIsConnectionModalOpen} 
+                onOpenChange={setIsConnectionModalOpen}
+                onConnectSuccess={(url) => {
+                    localStorage.setItem('dartVmServiceUrl', url);
+                }}
             />
 
             <div className="flex justify-between items-center mb-8">
@@ -82,15 +104,23 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {error && (
-                        <Card className="border-destructive/50 bg-destructive/5 mb-6">
-                            <CardContent className="pt-6">
-                                <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
-                                <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch VM information'}</p>
-                                <Button onClick={() => setIsConnectionModalOpen(true)} variant="outline">
-                                    Reconnect
-                                </Button>
-                            </CardContent>
-                        </Card>
+                      <Card className="border-destructive/50 bg-destructive/5 mb-6">
+                        <CardContent className="pt-6">
+                          <h3 className="text-xl font-semibold text-destructive mb-2">Error</h3>
+                          <p className="mb-4">{error instanceof Error ? error.message : 'Failed to fetch VM information'}</p>
+                          <Button onClick={() => setIsConnectionModalOpen(true)} variant="outline">
+                            Reconnect
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {!isLoading && !error && !vmInfo && (
+                      <Card>
+                        <CardContent className="pt-6 text-center text-muted-foreground p-8">
+                          No VM information available yet. Connect to a Dart VM and wait for data to appear.
+                        </CardContent>
+                      </Card>
                     )}
 
                     {vmInfo && (

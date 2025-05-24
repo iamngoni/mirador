@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useVMStream, useDartVMService } from '@/services/dart-vm-service';
-import ConnectionForm from '@/components/connection-form';
+import { useVMStream, useDartVMService, dartVMService } from '@/services/dart-vm-service';
+import ConnectionModal from '@/components/connection-modal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface TimelineEvent {
   traceEvents: TraceEvent[];
@@ -32,16 +35,35 @@ const CATEGORIES = {
 };
 
 const Timeline: React.FC = () => {
-  const { connectionStatus } = useDartVMService();
-  const [showConnection, setShowConnection] = useState(connectionStatus !== 'connected');
+  const { connectionStatus, connect } = useDartVMService();
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
   const { events, clearEvents } = useVMStream<TimelineEvent>('Timeline');
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [viewRange, setViewRange] = useState<[number, number]>([0, 0]);
   const [hoveredEvent, setHoveredEvent] = useState<TraceEvent | null>(null);
+  
+  // Try to restore connection from localStorage if needed
+  useEffect(() => {
+    const reconnectIfNeeded = async () => {
+      if (connectionStatus !== 'connected') {
+        const savedUrl = localStorage.getItem('dartVmServiceUrl');
+        if (savedUrl) {
+          try {
+            await connect(savedUrl);
+            console.log('Reconnected to Dart VM Service');
+          } catch (error) {
+            console.error('Failed to reconnect:', error);
+          }
+        }
+      }
+    };
+    
+    reconnectIfNeeded();
+  }, [connectionStatus, connect]);
 
   useEffect(() => {
-    setShowConnection(connectionStatus !== 'connected');
+    setIsConnectionModalOpen(connectionStatus !== 'connected');
   }, [connectionStatus]);
 
   // Extract all trace events from timeline events
@@ -58,8 +80,9 @@ const Timeline: React.FC = () => {
     }
   }, [allTraceEvents]);
 
-  const handleConnect = () => {
-    setShowConnection(false);
+  const handleConnect = (url: string) => {
+    localStorage.setItem('dartVmServiceUrl', url);
+    setIsConnectionModalOpen(false);
   };
 
   const zoomIn = () => {
@@ -82,9 +105,9 @@ const Timeline: React.FC = () => {
   const renderTimelineEvents = () => {
     if (allTraceEvents.length === 0) {
       return (
-        <div className="no-data">
-          No timeline events recorded. The timeline displays performance data
-          when the Dart VM is recording traces.
+        <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground italic p-6">
+          <svg width="48" height="48" fill="none" className="mb-2 opacity-40" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10m-16 0a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2m-16 0V7m16 10V7"></path><rect width="2" height="6" x="7" y="11" fill="currentColor" rx="1"></rect><rect width="2" height="3" x="11" y="14" fill="currentColor" rx="1"></rect><rect width="2" height="9" x="15" y="8" fill="currentColor" rx="1"></rect></svg>
+          No timeline events yet. Enable timeline recording in your Dart VM to see performance data.
         </div>
       );
     }
@@ -95,7 +118,7 @@ const Timeline: React.FC = () => {
     const timeToPixel = (containerWidth * scale) / timeRange;
 
     return (
-      <div className="timeline-chart" style={{ width: `${containerWidth * scale}px` }}>
+      <div className="relative h-[350px]" style={{ width: `${containerWidth * scale}px` }}>
         {allTraceEvents.map((event, index) => {
           const startPosition = (event.ts - minTime) * timeToPixel;
           const duration = event.dur || 0;
@@ -104,17 +127,23 @@ const Timeline: React.FC = () => {
           return (
             <div
               key={index}
-              className="timeline-event"
+              className="absolute h-5 rounded-sm cursor-pointer hover:opacity-80 transition-opacity"
               style={{
                 left: `${startPosition}px`,
                 width: `${width}px`,
                 backgroundColor: getCategoryColor(event.cat),
+                top: '50%',
+                transform: 'translateY(-50%)'
               }}
               onMouseEnter={() => setHoveredEvent(event)}
               onMouseLeave={() => setHoveredEvent(null)}
               title={`${event.name} (${event.cat})`}
             >
-              {width > 50 && <span className="event-name">{event.name}</span>}
+              {width > 50 && (
+                <span className="truncate text-xs text-white px-1 leading-5 overflow-hidden whitespace-nowrap">
+                  {event.name}
+                </span>
+              )}
             </div>
           );
         })}
@@ -122,60 +151,135 @@ const Timeline: React.FC = () => {
     );
   };
 
-  if (showConnection) {
-    return <ConnectionForm onConnect={handleConnect} />;
+  if (connectionStatus !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold mb-2">Connect to Dart VM</h2>
+              <p className="text-muted-foreground">You need to connect to a Dart VM to view timeline data</p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <ConnectionModal 
+          isOpen={isConnectionModalOpen}
+          onOpenChange={setIsConnectionModalOpen}
+          onConnectSuccess={(url) => handleConnect(url)}
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="timeline-container">
-      <div className="panel-header">
-        <h2>Timeline</h2>
-        <div className="panel-actions">
-          <button onClick={clearEvents} className="clear-button">
+    <div className="container p-4">
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen}
+        onOpenChange={setIsConnectionModalOpen}
+        onConnectSuccess={(url) => handleConnect(url)}
+      />
+      
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">Timeline</h2>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={clearEvents}
+          >
             Clear Events
-          </button>
-          <div className="zoom-controls">
-            <button onClick={zoomOut} title="Zoom out">-</button>
-            <button onClick={resetZoom} title="Reset zoom">1:1</button>
-            <button onClick={zoomIn} title="Zoom in">+</button>
+          </Button>
+          <div className="flex rounded-md border">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={zoomOut} 
+              title="Zoom out"
+              className="rounded-r-none border-r"
+            >
+              -
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={resetZoom} 
+              title="Reset zoom"
+              className="rounded-none border-r"
+            >
+              1:1
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={zoomIn} 
+              title="Zoom in"
+              className="rounded-l-none"
+            >
+              +
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="timeline-wrapper">
-        <div className="timeline-view" ref={containerRef}>
-          <div className="timeline-scroll">
-            {renderTimelineEvents()}
+      <Card className="mb-6">
+        <CardContent className="p-0 h-[400px] overflow-hidden">
+          <div className="h-full overflow-auto" ref={containerRef}>
+            <div className="min-w-full">
+              {renderTimelineEvents()}
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {hoveredEvent && (
-        <div className="event-details">
-          <h3>{hoveredEvent.name}</h3>
-          <div className="event-meta">
-            <div><strong>Category:</strong> {hoveredEvent.cat}</div>
-            <div><strong>Phase:</strong> {hoveredEvent.ph}</div>
-            <div><strong>Time:</strong> {hoveredEvent.ts} μs</div>
-            {hoveredEvent.dur && (
-              <div><strong>Duration:</strong> {hoveredEvent.dur} μs</div>
-            )}
-          </div>
-          {hoveredEvent.args && Object.keys(hoveredEvent.args).length > 0 && (
-            <div className="event-args">
-              <h4>Arguments:</h4>
-              <pre>{JSON.stringify(hoveredEvent.args, null, 2)}</pre>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>{hoveredEvent.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Category:</span> {hoveredEvent.cat}
+              </div>
+              <div className="text-sm">
+                <span className="text-muted-foreground">Phase:</span> {hoveredEvent.ph}
+              </div>
+              <div className="text-sm">
+                <span className="text-muted-foreground">Time:</span> {hoveredEvent.ts} μs
+              </div>
+              {hoveredEvent.dur && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Duration:</span> {hoveredEvent.dur} μs
+                </div>
+              )}
             </div>
-          )}
-        </div>
+            {hoveredEvent.args && Object.keys(hoveredEvent.args).length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Arguments:</h4>
+                <ScrollArea className="h-[150px] rounded-md border p-4">
+                  <pre className="text-xs font-mono">{JSON.stringify(hoveredEvent.args, null, 2)}</pre>
+                </ScrollArea>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
       
-      <div className="timeline-notes">
-        <p>
-          Note: Timeline events are collected from the Dart VM Timeline stream.
-          Enable timeline recording in your application to see detailed performance data.
-        </p>
-      </div>
+      <Card className="bg-muted/40">
+        <CardContent className="pt-6">
+          <p className="text-sm text-muted-foreground">
+            Note: Timeline events are collected from the Dart VM Timeline stream.
+            Enable timeline recording in your application to see detailed performance data.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 };

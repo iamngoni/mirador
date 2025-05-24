@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useVMStream, useDartVMService } from '@/services/dart-vm-service';
-import ConnectionForm from '@/components/connection-form';
+import { useVMStream, useDartVMService, dartVMService } from '@/services/dart-vm-service';
+import ConnectionModal from '@/components/connection-modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 
 interface LogEntry {
   message: string;
@@ -17,16 +24,35 @@ interface LogEntry {
 const LOG_LEVELS = ['ALL', 'FINEST', 'FINER', 'FINE', 'CONFIG', 'INFO', 'WARNING', 'SEVERE', 'SHOUT', 'OFF'];
 
 const Logs: React.FC = () => {
-  const { connectionStatus } = useDartVMService();
-  const [showConnection, setShowConnection] = useState(connectionStatus !== 'connected');
+  const { connectionStatus, connect } = useDartVMService();
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
   const [filterText, setFilterText] = useState('');
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const { events: logEvents, clearEvents } = useVMStream<LogEntry>('Logging');
   const containerRef = React.useRef<HTMLDivElement>(null);
 
+  // Try to restore connection from localStorage if needed
   useEffect(() => {
-    setShowConnection(connectionStatus !== 'connected');
+    const reconnectIfNeeded = async () => {
+      if (connectionStatus !== 'connected') {
+        const savedUrl = localStorage.getItem('dartVmServiceUrl');
+        if (savedUrl) {
+          try {
+            await connect(savedUrl);
+            console.log('Reconnected to Dart VM Service');
+          } catch (error) {
+            console.error('Failed to reconnect:', error);
+          }
+        }
+      }
+    };
+    
+    reconnectIfNeeded();
+  }, [connectionStatus, connect]);
+
+  useEffect(() => {
+    setIsConnectionModalOpen(connectionStatus !== 'connected');
   }, [connectionStatus]);
 
   // Filter logs based on search text and level
@@ -53,110 +79,162 @@ const Logs: React.FC = () => {
     }
   }, [filteredLogs.length, autoScroll, virtualizer]);
 
-  const handleConnect = () => {
-    setShowConnection(false);
+  const handleConnect = (url: string) => {
+    localStorage.setItem('dartVmServiceUrl', url);
+    setIsConnectionModalOpen(false);
   };
 
-  const getLogLevelClass = (level: number) => {
-    if (level >= 8) return 'log-level-error';
-    if (level >= 6) return 'log-level-warning';
-    if (level >= 5) return 'log-level-info';
-    return 'log-level-debug';
+  const getLogLevelBadge = (level: number) => {
+    if (level >= 8) return <Badge variant="destructive">{LOG_LEVELS[level] || 'UNKNOWN'}</Badge>;
+    if (level >= 6) return <Badge variant="warning">{LOG_LEVELS[level] || 'UNKNOWN'}</Badge>;
+    if (level >= 5) return <Badge variant="info">{LOG_LEVELS[level] || 'UNKNOWN'}</Badge>;
+    return <Badge variant="secondary">{LOG_LEVELS[level] || 'UNKNOWN'}</Badge>;
   };
 
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  if (showConnection) {
-    return <ConnectionForm onConnect={handleConnect} />;
+  if (connectionStatus !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold mb-2">Connect to Dart VM</h2>
+              <p className="text-muted-foreground">You need to connect to a Dart VM to view logs</p>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={() => setIsConnectionModalOpen(true)}
+            >
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+        
+        <ConnectionModal 
+          isOpen={isConnectionModalOpen}
+          onOpenChange={setIsConnectionModalOpen}
+          onConnectSuccess={handleConnect}
+        />
+      </div>
+    );
   }
 
   return (
-    <div className="logs-container">
-      <div className="toolbar">
-        <div className="search-container">
-          <input
-            type="text"
-            placeholder="Filter logs..."
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            className="search-input"
-          />
-          <select
-            value={levelFilter === null ? 'ALL' : levelFilter.toString()}
-            onChange={(e) => setLevelFilter(e.target.value === 'ALL' ? null : Number(e.target.value))}
-            className="level-filter"
-          >
-            <option value="ALL">All Levels</option>
-            {LOG_LEVELS.map((level, index) => (
-              <option key={level} value={index}>{level}</option>
-            ))}
-          </select>
-        </div>
-        <div className="toolbar-actions">
-          <label className="auto-scroll-label">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
+    <div className="flex flex-col h-full">
+      <ConnectionModal 
+        isOpen={isConnectionModalOpen}
+        onOpenChange={setIsConnectionModalOpen}
+      />
+
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex flex-1 gap-2 items-center">
+          <div className="w-full max-w-sm">
+            <Input
+              placeholder="Filter logs..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
             />
-            Auto-scroll
-          </label>
-          <button onClick={clearEvents} className="clear-button">
+          </div>
+          <Select
+            value={levelFilter === null ? 'ALL' : levelFilter.toString()}
+            onValueChange={(value) => setLevelFilter(value === 'ALL' ? null : Number(value))}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select Level" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Levels</SelectItem>
+              {LOG_LEVELS.map((level, index) => (
+                <SelectItem key={level} value={index.toString()}>{level}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Checkbox 
+              id="auto-scroll" 
+              checked={autoScroll} 
+              onCheckedChange={(checked) => setAutoScroll(checked as boolean)}
+            />
+            <label 
+              htmlFor="auto-scroll" 
+              className="text-sm font-medium cursor-pointer"
+            >
+              Auto-scroll
+            </label>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={clearEvents}
+          >
             Clear Logs
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="logs-status">
+      <div className="px-4 py-1 text-xs text-muted-foreground border-b">
         Showing {filteredLogs.length} of {logEvents.length} logs
       </div>
 
-      <div ref={containerRef} className="logs-view">
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const log = filteredLogs[virtualRow.index];
-            return (
-              <div
-                key={virtualRow.key}
-                className={`log-entry ${getLogLevelClass(log.level)}`}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                <div className="log-time">{formatTime(log.time)}</div>
-                <div className="log-level">{LOG_LEVELS[log.level] || 'UNKNOWN'}</div>
-                <div className="log-message">{log.message}</div>
-                {log.name && <div className="log-name">{log.name}</div>}
-                {log.error && (
-                  <div className="log-error">
-                    Error: {log.error}
-                    {log.stackTrace && <pre className="log-stack">{log.stackTrace}</pre>}
+      <div className="flex-1 overflow-hidden border rounded-md m-4">
+        {filteredLogs.length > 0 ? (
+          <div ref={containerRef} className="h-full overflow-auto">
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const log = filteredLogs[virtualRow.index];
+                return (
+                  <div
+                    key={virtualRow.key}
+                    className={`flex border-b p-2 ${log.error ? 'bg-destructive/5' : ''}`}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <div className="text-xs text-muted-foreground w-24 shrink-0">{formatTime(log.time)}</div>
+                    <div className="w-24 shrink-0">{getLogLevelBadge(log.level)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="break-words">{log.message}</div>
+                      {log.name && <div className="text-xs text-muted-foreground mt-1">{log.name}</div>}
+                      {log.error && (
+                        <div className="mt-2 px-2 py-1 border-l-2 border-destructive/50 text-sm">
+                          <div className="font-medium text-destructive">Error: {log.error}</div>
+                          {log.stackTrace && (
+                            <ScrollArea className="h-24 mt-1">
+                              <pre className="text-xs whitespace-pre-wrap font-mono">{log.stackTrace}</pre>
+                            </ScrollArea>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-muted-foreground italic">
+            <span className="text-2xl mb-2">📝</span>
+            <span>No logs yet. Once your Dart application sends logs, they will appear here.</span>
+          </div>
+        )}
       </div>
-
-      {filteredLogs.length === 0 && (
-        <div className="no-logs">
-          No logs to display. Make sure your Dart application is sending log messages.
-        </div>
-      )}
     </div>
   );
 };
