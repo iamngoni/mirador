@@ -153,20 +153,4 @@ const Layout: React.FC = () => {
     );
 };
 
-// Component to show WebSocket connection status
-const ConnectionStatus: React.FC = () => {
-    // Use the real connection status from the service
-    const { connectionStatus } = useDartVMService();
-    const isConnected = connectionStatus === 'connected';
-
-    return (
-        <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-success' : 'bg-destructive'}`}></div>
-            <span className="text-sm font-medium">{isConnected ? 'Connected' : 'Disconnected'}</span>
-        </div>
-    );
-};
-
-
-
 export default Layout;

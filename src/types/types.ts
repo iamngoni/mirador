@@ -91,3 +91,22 @@ export interface TraceEvent {
     dur?: number;
     id?: string;
 }
+
+export interface VMInfo {
+    name: string;
+    version: string;
+    architectureBits: number;
+    hostCPU: string;
+    targetCPU: string;
+    isolates: any[];
+    pid: number;
+    startTime: number;
+    _kind: string;
+}
+
+export interface ExtensionEvent {
+    kind: string;
+    extensionKind: string;
+    extensionData: any;
+    timestamp?: number;
+}

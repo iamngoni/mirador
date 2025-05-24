@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-
 import { LogEntry } from '@/types/types';
 
 const LOG_LEVELS = ['ALL', 'FINEST', 'FINER', 'FINE', 'CONFIG', 'INFO', 'WARNING', 'SEVERE', 'SHOUT', 'OFF'];
@@ -31,7 +30,7 @@ const useLogsStream = () => {
         listen();
         return () => {
             active = false;
-            dartVMService.removeStreamListener('Logging', (event: LogEntry) => { });
+            dartVMService.removeStreamListener('Logging', (_) => { });
         };
     }, []);
     const clearEvents = () => setEvents([]);

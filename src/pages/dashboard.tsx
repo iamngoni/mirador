@@ -4,19 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import ConnectionModal from '@/components/connection-modal';
 import { dartVMService } from '@/services/dart-vm-service';
-import { ConnectionStatus } from '@/types/types';
-
-interface VMInfo {
-    name: string;
-    version: string;
-    architectureBits: number;
-    hostCPU: string;
-    targetCPU: string;
-    isolates: any[];
-    pid: number;
-    startTime: number;
-    _kind: string;
-}
+import { ConnectionStatus, VMInfo } from '@/types/types';
 
 const Dashboard: React.FC = () => {
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());

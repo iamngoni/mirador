@@ -9,15 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import type { ConnectionStatus } from '@/types/types';
+import type { ConnectionStatus, ExtensionEvent } from '@/types/types';
 
-
-interface ExtensionEvent {
-    kind: string;
-    extensionKind: string;
-    extensionData: any;
-    timestamp?: number;
-}
 
 const useExtensionStream = () => {
     const [events, setEvents] = useState<ExtensionEvent[]>([]);
@@ -36,7 +29,7 @@ const useExtensionStream = () => {
         listen();
         return () => {
             active = false;
-            dartVMService.removeStreamListener('Extension', (event: ExtensionEvent) => { });
+            dartVMService.removeStreamListener('Extension', (_) => { });
         };
     }, []);
     const clearEvents = () => setEvents([]);
