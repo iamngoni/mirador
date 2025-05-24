@@ -20,94 +20,94 @@ interface ExtensionEvent {
 }
 
 const useExtensionStream = () => {
-  const [events, setEvents] = useState<ExtensionEvent[]>([]);
-  useEffect(() => {
-    let active = true;
-    const listen = async () => {
-      try {
-        await dartVMService.streamListen('Extension');
-        dartVMService.addStreamListener('Extension', (event: ExtensionEvent) => {
-          if (active) setEvents(prev => [...prev, event]);
-        });
-      } catch (e) {
-        // ignore
-      }
-    };
-    listen();
-    return () => {
-      active = false;
-      dartVMService.removeStreamListener('Extension', (event: ExtensionEvent) => {});
-    };
-  }, []);
-  const clearEvents = () => setEvents([]);
-  return { events, clearEvents };
+    const [events, setEvents] = useState<ExtensionEvent[]>([]);
+    useEffect(() => {
+        let active = true;
+        const listen = async () => {
+            try {
+                await dartVMService.streamListen('Extension');
+                dartVMService.addStreamListener('Extension', (event: ExtensionEvent) => {
+                    if (active) setEvents(prev => [...prev, event]);
+                });
+            } catch (e) {
+                // ignore
+            }
+        };
+        listen();
+        return () => {
+            active = false;
+            dartVMService.removeStreamListener('Extension', (event: ExtensionEvent) => { });
+        };
+    }, []);
+    const clearEvents = () => setEvents([]);
+    return { events, clearEvents };
 };
 
 const Extensions: React.FC = () => {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());
-  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
-  const [filterText, setFilterText] = useState('');
-  const [filterKind, setFilterKind] = useState<string>('');
-  const [autoScroll, setAutoScroll] = useState(true);
-  const { events: extensionEvents, clearEvents } = useExtensionStream();
-  const containerRef = React.useRef<HTMLDivElement>(null);
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
+    const [filterText, setFilterText] = useState('');
+    const [filterKind, setFilterKind] = useState<string>('');
+    const [autoScroll, setAutoScroll] = useState(true);
+    const { events: extensionEvents, clearEvents } = useExtensionStream();
+    const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // Listen for connection status changes
-  useEffect(() => {
-    const listener = (status: ConnectionStatus) => setConnectionStatus(status);
-    dartVMService.addConnectionStatusListener(listener);
-    return () => dartVMService.removeConnectionStatusListener(listener);
-  }, []);
+    // Listen for connection status changes
+    useEffect(() => {
+        const listener = (status: ConnectionStatus) => setConnectionStatus(status);
+        dartVMService.addConnectionStatusListener(listener);
+        return () => dartVMService.removeConnectionStatusListener(listener);
+    }, []);
 
-  // Debug: log connection status and events
-  useEffect(() => {
-    console.log('[Extensions] connectionStatus:', connectionStatus);
-  }, [connectionStatus]);
-  useEffect(() => {
-    console.log('[Extensions] extensionEvents:', extensionEvents);
-  }, [extensionEvents]);
+    // Debug: log connection status and events
+    useEffect(() => {
+        console.log('[Extensions] connectionStatus:', connectionStatus);
+    }, [connectionStatus]);
+    useEffect(() => {
+        console.log('[Extensions] extensionEvents:', extensionEvents);
+    }, [extensionEvents]);
 
-  // Try to restore connection from localStorage if needed
-  useEffect(() => {
-    const reconnectIfNeeded = async () => {
-      if (connectionStatus !== 'connected') {
-        const savedUrl = localStorage.getItem('dartVmServiceUrl');
-        if (savedUrl) {
-          try {
-            await dartVMService.connect(savedUrl);
-            console.log('Reconnected to Dart VM Service');
-          } catch (error) {
-            console.error('Failed to reconnect:', error);
-          }
-        }
-      }
-    };
-    reconnectIfNeeded();
-  }, [connectionStatus]);
+    // Try to restore connection from localStorage if needed
+    useEffect(() => {
+        const reconnectIfNeeded = async () => {
+            if (connectionStatus !== 'connected') {
+                const savedUrl = localStorage.getItem('dartVmServiceUrl');
+                if (savedUrl) {
+                    try {
+                        await dartVMService.connect(savedUrl);
+                        console.log('Reconnected to Dart VM Service');
+                    } catch (error) {
+                        console.error('Failed to reconnect:', error);
+                    }
+                }
+            }
+        };
+        reconnectIfNeeded();
+    }, [connectionStatus]);
 
-  useEffect(() => {
-    setIsConnectionModalOpen(connectionStatus !== 'connected');
-  }, [connectionStatus]);
+    useEffect(() => {
+        setIsConnectionModalOpen(connectionStatus !== 'connected');
+    }, [connectionStatus]);
 
     // Extract all unique extension kinds for filtering
     const uniqueExtensionKinds = React.useMemo(() => {
-      const kinds = new Set<string>();
-      extensionEvents.forEach((event: ExtensionEvent) => {
-        if (event.extensionKind) {
-          kinds.add(event.extensionKind);
-        }
-      });
-      return Array.from(kinds).sort();
+        const kinds = new Set<string>();
+        extensionEvents.forEach((event: ExtensionEvent) => {
+            if (event.extensionKind) {
+                kinds.add(event.extensionKind);
+            }
+        });
+        return Array.from(kinds).sort();
     }, [extensionEvents]);
 
     // Filter events based on search text and kind
     const filteredEvents = React.useMemo(() => {
-      return extensionEvents.filter((event: ExtensionEvent) => {
-        const textMatch = !filterText ||
-          JSON.stringify(event).toLowerCase().includes(filterText.toLowerCase());
-        const kindMatch = !filterKind || event.extensionKind === filterKind;
-        return textMatch && kindMatch;
-      });
+        return extensionEvents.filter((event: ExtensionEvent) => {
+            const textMatch = !filterText ||
+                JSON.stringify(event).toLowerCase().includes(filterText.toLowerCase());
+            const kindMatch = !filterKind || event.extensionKind === filterKind;
+            return textMatch && kindMatch;
+        });
     }, [extensionEvents, filterText, filterKind]);
 
     // Setup virtualizer for displaying events
@@ -131,7 +131,7 @@ const Extensions: React.FC = () => {
     };
 
     const formatTime = (timestamp: number) => {
-      return new Date(timestamp).toLocaleTimeString();
+        return new Date(timestamp).toLocaleTimeString();
     };
 
     if (connectionStatus !== 'connected') {
@@ -195,7 +195,7 @@ const Extensions: React.FC = () => {
                             <SelectValue placeholder="All Event Types" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">All Event Types</SelectItem>
+                            <SelectItem value="null">All Event Types</SelectItem>
                             {uniqueExtensionKinds.map(kind => (
                                 <SelectItem key={kind} value={kind}>{kind}</SelectItem>
                             ))}
@@ -277,12 +277,12 @@ const Extensions: React.FC = () => {
                         <Card className="border-0 shadow-none">
                             <CardContent className="p-6">
                                 <div className="flex flex-col items-center justify-center min-h-[200px] text-center text-muted-foreground">
-                                  <svg width="48" height="48" fill="none" className="mx-auto mb-2" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#f3f4f6"/><path d="M24 14v12m0 4h.01" stroke="#a1a1aa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="2"/></svg>
-                                  <p className="mb-2">No extension events recorded yet.</p>
-                                  <p className="mb-2">To send extension events from your Dart application, use:</p>
-                                  <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto w-full max-w-xl mx-auto">
-                                    <pre>
-                        {`// In your Dart code
+                                    <svg width="48" height="48" fill="none" className="mx-auto mb-2" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#f3f4f6" /><path d="M24 14v12m0 4h.01" stroke="#a1a1aa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="2" /></svg>
+                                    <p className="mb-2">No extension events recorded yet.</p>
+                                    <p className="mb-2">To send extension events from your Dart application, use:</p>
+                                    <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto w-full max-w-xl mx-auto">
+                                        <pre>
+                                            {`// In your Dart code
                         developer.postEvent('myExtension', {'data': 'value'});
 
 
@@ -290,13 +290,13 @@ const Extensions: React.FC = () => {
                         developer.registerExtension('ext.myExtension', (method, params) {
                           return ServiceExtensionResponse.result(json.encode({'result': 'success'}));
                         });`}
-                                    </pre>
-                                  </div>
-                                  {/* Debug: show raw extensionEvents */}
-                                  <div className="mt-6">
-                                    <div className="text-xs text-muted-foreground mb-1">[Debug] Raw extensionEvents:</div>
-                                    <pre className="text-xs bg-muted p-2 rounded">{JSON.stringify(extensionEvents, null, 2)}</pre>
-                                  </div>
+                                        </pre>
+                                    </div>
+                                    {/* Debug: show raw extensionEvents */}
+                                    <div className="mt-6">
+                                        <div className="text-xs text-muted-foreground mb-1">[Debug] Raw extensionEvents:</div>
+                                        <pre className="text-xs bg-muted p-2 rounded">{JSON.stringify(extensionEvents, null, 2)}</pre>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

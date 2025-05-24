@@ -12,48 +12,48 @@ import { MemoryUsage, AllocationStats } from '@/types/types';
 
 
 const Memory: React.FC = () => {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());
-  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
-  const [selectedIsolateId, setSelectedIsolateId] = useState<string | null>(null);
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(dartVMService.getConnectionStatus());
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(connectionStatus !== 'connected');
+    const [selectedIsolateId, setSelectedIsolateId] = useState<string | null>(null);
 
-  // Listen for connection status changes
-  useEffect(() => {
-    const listener = (status: ConnectionStatus) => setConnectionStatus(status);
-    dartVMService.addConnectionStatusListener(listener);
-    return () => dartVMService.removeConnectionStatusListener(listener);
-  }, []);
+    // Listen for connection status changes
+    useEffect(() => {
+        const listener = (status: ConnectionStatus) => setConnectionStatus(status);
+        dartVMService.addConnectionStatusListener(listener);
+        return () => dartVMService.removeConnectionStatusListener(listener);
+    }, []);
     // Try to restore connection from localStorage if needed
     useEffect(() => {
-      const reconnectIfNeeded = async () => {
-        if (connectionStatus !== 'connected') {
-          const savedUrl = localStorage.getItem('dartVmServiceUrl');
-          if (savedUrl) {
-            try {
-              await dartVMService.connect(savedUrl);
-              console.log('Reconnected to Dart VM Service');
-            } catch (error) {
-              console.error('Failed to reconnect:', error);
+        const reconnectIfNeeded = async () => {
+            if (connectionStatus !== 'connected') {
+                const savedUrl = localStorage.getItem('dartVmServiceUrl');
+                if (savedUrl) {
+                    try {
+                        await dartVMService.connect(savedUrl);
+                        console.log('Reconnected to Dart VM Service');
+                    } catch (error) {
+                        console.error('Failed to reconnect:', error);
+                    }
+                }
             }
-          }
-        }
-      };
+        };
 
-      reconnectIfNeeded();
+        reconnectIfNeeded();
     }, [connectionStatus]);
 
     useEffect(() => {
-      setIsConnectionModalOpen(connectionStatus !== 'connected');
+        setIsConnectionModalOpen(connectionStatus !== 'connected');
     }, [connectionStatus]);
-  
+
     // Fetch VM information to get isolates
     const { data: vmData } = useQuery({
-      queryKey: ['vm'],
-      queryFn: () => {
-        console.log('[Memory] Fetching VM info');
-        return dartVMService.getVM();
-      },
-      enabled: connectionStatus === 'connected',
-      refetchInterval: 5000,
+        queryKey: ['vm'],
+        queryFn: () => {
+            console.log('[Memory] Fetching VM info');
+            return dartVMService.getVM();
+        },
+        enabled: connectionStatus === 'connected',
+        refetchInterval: 5000,
     });
 
     // Set the first isolate as selected if none is selected
@@ -64,20 +64,20 @@ const Memory: React.FC = () => {
     }, [vmData, selectedIsolateId]);
 
     // Get memory usage for the selected isolate
-    const { 
-      data: memoryUsage,
-      isLoading: isLoadingMemory,
-      error: memoryError,
-      refetch: refetchMemory,
+    const {
+        data: memoryUsage,
+        isLoading: isLoadingMemory,
+        error: memoryError,
+        refetch: refetchMemory,
     } = useQuery<MemoryUsage>({
-      queryKey: ['memory', selectedIsolateId],
-      queryFn: async () => {
-        console.log('[Memory] Fetching memory usage for isolate', selectedIsolateId);
-        if (!selectedIsolateId) throw new Error('No isolate selected');
-        return dartVMService.getMemoryUsage(selectedIsolateId);
-      },
-      enabled: connectionStatus === 'connected' && !!selectedIsolateId,
-      refetchInterval: 2000,
+        queryKey: ['memory', selectedIsolateId],
+        queryFn: async () => {
+            console.log('[Memory] Fetching memory usage for isolate', selectedIsolateId);
+            if (!selectedIsolateId) throw new Error('No isolate selected');
+            return dartVMService.getMemoryUsage(selectedIsolateId);
+        },
+        enabled: connectionStatus === 'connected' && !!selectedIsolateId,
+        refetchInterval: 2000,
     });
 
     useEffect(() => {
@@ -100,18 +100,18 @@ const Memory: React.FC = () => {
 
     // Get allocation profile for the selected isolate
     const {
-      data: allocationProfile,
-      isLoading: isLoadingProfile,
-      error: profileError,
-      refetch: refetchProfile,
+        data: allocationProfile,
+        isLoading: isLoadingProfile,
+        error: profileError,
+        refetch: refetchProfile,
     } = useQuery({
-      queryKey: ['allocation-profile', selectedIsolateId],
-      queryFn: () => {
-        console.log('[Memory] Fetching allocation profile for isolate', selectedIsolateId);
-        return selectedIsolateId ? dartVMService.getAllocationProfile(selectedIsolateId, true) : null;
-      },
-      enabled: connectionStatus === 'connected' && !!selectedIsolateId,
-      refetchInterval: 5000,
+        queryKey: ['allocation-profile', selectedIsolateId],
+        queryFn: () => {
+            console.log('[Memory] Fetching allocation profile for isolate', selectedIsolateId);
+            return selectedIsolateId ? dartVMService.getAllocationProfile(selectedIsolateId, true) : null;
+        },
+        enabled: connectionStatus === 'connected' && !!selectedIsolateId,
+        refetchInterval: 5000,
     });
 
     useEffect(() => {
@@ -283,7 +283,7 @@ const Memory: React.FC = () => {
                                 </div>
                             </CardContent>
                         </Card>
-            
+
                         <Card>
                             <CardContent>
                                 <div className="font-bold mb-2">External Memory</div>
@@ -310,9 +310,9 @@ const Memory: React.FC = () => {
                                     <div className="flex justify-between">
                                         <div className="font-medium truncate max-w-[50%]" title={item.name}>{item.name}</div>
                                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <span>{formatBytes(item.size)}</span>
-                                            <span>({item.percentSize.toFixed(1)}%)</span>
-                                            <span>{item.count.toLocaleString()} instances</span>
+                                            <span>{formatBytes(item.size) ?? 0}</span>
+                                            <span>({item.percentSize?.toFixed(1) ?? 0}%)</span>
+                                            <span>{item.count?.toLocaleString() ?? 0} instances</span>
                                         </div>
                                     </div>
                                     <Progress
